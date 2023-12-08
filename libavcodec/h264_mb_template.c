@@ -45,6 +45,7 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
     const int mb_x    = sl->mb_x;
     const int mb_y    = sl->mb_y;
     const int mb_xy   = sl->mb_xy;
+    //mb_xy 是什么，mb_xy是宏块的二维到一维的映射后索引？用于定位信息？
     const int mb_type = h->cur_pic.mb_type[mb_xy];
 
     // 定义Y, Cb, Cr的目标缓冲区
@@ -58,8 +59,10 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
     const int *block_offset = &h->block_offset[0];
 
     // 检查是否需要进行变换绕过
+    // 在H.264编码中，qscale 是一个量化参数。当 qscale 为0时，通常表示正在使用无损编码，这可能需要变换绕过。
+    // h->ps.sps->transform_bypass 检查序列参数集（SPS）中的变换绕过标志是否设置
+    // 在 H.264 视频编码中，序列参数集（SPS）包含了对整个序列（即一系列连续的视频帧）有效的参数。这些参数包括像素尺寸、帧率、颜色空间等信息。
     const int transform_bypass = !SIMPLE && (sl->qscale == 0 && h->ps.sps->transform_bypass);
-
     // 定义IDCT添加函数
     void (*idct_add)(uint8_t *dst, int16_t *block, int stride);
 
@@ -67,12 +70,18 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
     const int block_h   = 16 >> h->chroma_y_shift;
     const int chroma422 = CHROMA422(h);
 
-    // 计算Y, Cb, Cr的目标缓冲区地址
+    /*计算Y, Cb, Cr的目标缓冲区地址,dest_y 是 Y 分量的目标缓冲区地址。
+    它是通过将宏块的 x 坐标 (mb_x) 左移 PIXEL_SHIFT 位（相当于乘以 2^PIXEL_SHIFT），
+    然后加上宏块的 y 坐标 (mb_y) 乘以每行的字节数 (sl->linesize)，最后乘以16得到的。这里乘以16是因为每个宏块包含16行像素。
+    dest_cb 和 dest_cr 是 Cb 和 Cr 分量的目标缓冲区地址。它们的计算方式与 dest_y 类似，但是有两个主要的区别。
+    首先，它们是通过将 mb_x 左移 PIXEL_SHIFT 位然后乘以8得到的，这是因为 Cb 和 Cr 分量的分辨率通常是 Y 分量的一半。
+    其次，它们是通过将 mb_y 乘以 UV 分量每行的字节数 (sl->uvlinesize) 然后乘以 block_h 得到的，这是因为 UV 分量的垂直分辨率也可能是 Y 分量的一半。
+    */
     dest_y  = h->cur_pic.f->data[0] + ((mb_x << PIXEL_SHIFT)     + mb_y * sl->linesize)  * 16;
     dest_cb = h->cur_pic.f->data[1] +  (mb_x << PIXEL_SHIFT) * 8 + mb_y * sl->uvlinesize * block_h;
     dest_cr = h->cur_pic.f->data[2] +  (mb_x << PIXEL_SHIFT) * 8 + mb_y * sl->uvlinesize * block_h;
 
-    // 预取数据
+    // 预取数据，提高数据访问效率，预取的实际上是字节流
     h->vdsp.prefetch(dest_y  + (sl->mb_x & 3) * 4 * sl->linesize   + (64 << PIXEL_SHIFT), sl->linesize,       4);
     h->vdsp.prefetch(dest_cb + (sl->mb_x & 7)     * sl->uvlinesize + (64 << PIXEL_SHIFT), dest_cr - dest_cb, 2);
 

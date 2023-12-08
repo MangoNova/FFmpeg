@@ -624,43 +624,67 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
     void (*idct_dc_add)(uint8_t *dst, int16_t *block, int stride);
     int i;
     int qscale = p == 0 ? sl->qscale : sl->chroma_qp[p - 1];
+    // 更新块偏移量，用于定位当前平面的数据
     block_offset += 16 * p;
+    // 如果当前宏块是4x4的帧内预测宏块
     if (IS_INTRA4x4(mb_type)) {
+        // 如果当前宏块使用了8x8的DCT变换
         if (IS_8x8DCT(mb_type)) {
+            // 如果启用了变换绕过
             if (transform_bypass) {
+                // 使用特定的添加函数
                 idct_dc_add =
                 idct_add    = h->h264dsp.h264_add_pixels8_clear;
             } else {
+                // 使用特定的IDCT和DC IDCT函数
                 idct_dc_add = h->h264dsp.h264_idct8_dc_add;
                 idct_add    = h->h264dsp.h264_idct8_add;
             }
+            // 遍历每个4x4的子块
             for (i = 0; i < 16; i += 4) {
+                // 计算当前子块的位置
                 uint8_t *const ptr = dest_y + block_offset[i];
+                // 获取当前子块的预测模式
                 const int dir      = sl->intra4x4_pred_mode_cache[scan8[i]];
+                // 如果启用了变换绕过，并且预测模式是垂直或水平
                 if (transform_bypass && h->ps.sps->profile_idc == 244 && dir <= 1) {
+                    // 如果x264版本小于151
                     if (h->x264_build < 151U) {
+                        // 使用特定的预测和添加函数
                         h->hpc.pred8x8l_add[dir](ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                     } else
+                        // 使用特定的预测和添加函数，包含滤波操作
                         h->hpc.pred8x8l_filter_add[dir](ptr, sl->mb + (i * 16 + p * 256 << pixel_shift),
                                                         (sl-> topleft_samples_available << i) & 0x8000,
                                                         (sl->topright_samples_available << i) & 0x4000, linesize);
                 } else {
+                    // 计算当前子块的非零系数数量
                     const int nnz = sl->non_zero_count_cache[scan8[i + p * 16]];
+                    // 进行亮度预测
                     h->hpc.pred8x8l[dir](ptr, (sl->topleft_samples_available << i) & 0x8000,
                                          (sl->topright_samples_available << i) & 0x4000, linesize);
+                    // 如果有非零系数
                     if (nnz) {
+                        // 如果只有一个非零系数，并且这个系数是DC系数
                         if (nnz == 1 && dctcoef_get(sl->mb, pixel_shift, i * 16 + p * 256))
+                            // 进行DC IDCT并添加到预测结果中
                             idct_dc_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                         else
+                            // 进行IDCT并添加到预测结果中
                             idct_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                     }
                 }
             }
         } else {
+            // 如果启用了变换绕过
             if (transform_bypass) {
+                // 使用特定的添加函数，直接将预测结果添加到目标块中
                 idct_dc_add  =
                 idct_add     = h->h264dsp.h264_add_pixels4_clear;
             } else {
+                // 使用特定的IDCT和DC IDCT函数，对DCT系数进行反变换，并添加到预测结果中
+                //idct函数在h264dsp_init中初始化
+                //idct函数的具体实现应该是在h264idct_template.c中
                 idct_dc_add = h->h264dsp.h264_idct_dc_add;
                 idct_add    = h->h264dsp.h264_idct_add;
             }
@@ -668,54 +692,77 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
                 uint8_t *const ptr = dest_y + block_offset[i];
                 const int dir      = sl->intra4x4_pred_mode_cache[scan8[i]];
 
+                // 如果启用了变换绕过，并且预测模式是垂直或水平
                 if (transform_bypass && h->ps.sps->profile_idc == 244 && dir <= 1) {
+                    // 使用特定的预测和添加函数
                     h->hpc.pred4x4_add[dir](ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                 } else {
                     uint8_t *topright;
                     int nnz, tr;
                     uint64_t tr_high;
+                    // 如果预测模式是对角向下左预测或垂直左预测
                     if (dir == DIAG_DOWN_LEFT_PRED || dir == VERT_LEFT_PRED) {
+                        // 计算右上角样本的可用性
                         const int topright_avail = (sl->topright_samples_available << i) & 0x8000;
+                        // 确保当前宏块的行索引大于0，或者行大小小于等于块偏移量
                         av_assert2(sl->mb_y || linesize <= block_offset[i]);
+                        // 如果右上角样本不可用
                         if (!topright_avail) {
+                            // 如果启用了像素位移
                             if (pixel_shift) {
+                                // 计算右上角样本的值，并将其扩展到64位
                                 tr_high  = ((uint16_t *)ptr)[3 - linesize / 2] * 0x0001000100010001ULL;
                                 topright = (uint8_t *)&tr_high;
                             } else {
+                                // 计算右上角样本的值，并将其扩展到32位
                                 tr       = ptr[3 - linesize] * 0x01010101u;
                                 topright = (uint8_t *)&tr;
                             }
                         } else
+                            // 如果右上角样本可用，计算其位置
                             topright = ptr + (4 << pixel_shift) - linesize;
                     } else
                         topright = NULL;
 
+                    // 进行亮度预测
                     h->hpc.pred4x4[dir](ptr, topright, linesize);
+                    // 计算当前子块的非零系数数量
                     nnz = sl->non_zero_count_cache[scan8[i + p * 16]];
+                    // 如果有非零系数
                     if (nnz) {
+                        // 如果只有一个非零系数，并且这个系数是DC系数
                         if (nnz == 1 && dctcoef_get(sl->mb, pixel_shift, i * 16 + p * 256))
+                            // 进行DC IDCT并添加到预测结果中
                             idct_dc_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                         else
+                            // 进行IDCT并添加到预测结果中
                             idct_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                     }
                 }
             }
         }
     } else {
+        // 进行16x16亮度预测
         h->hpc.pred16x16[sl->intra16x16_pred_mode](dest_y, linesize);
+        // 如果亮度DC块有非零系数
         if (sl->non_zero_count_cache[scan8[LUMA_DC_BLOCK_INDEX + p]]) {
+            // 如果没有启用变换绕过
             if (!transform_bypass)
+                // 进行亮度DC反量化和反IDCT
                 h->h264dsp.h264_luma_dc_dequant_idct(sl->mb + (p * 256 << pixel_shift),
                                                      sl->mb_luma_dc[p],
                                                      h->ps.pps->dequant4_coeff[p][qscale][0]);
             else {
+                // 定义DC映射
                 static const uint8_t dc_mapping[16] = {
                      0 * 16,  1 * 16,  4 * 16,  5 * 16,
                      2 * 16,  3 * 16,  6 * 16,  7 * 16,
                      8 * 16,  9 * 16, 12 * 16, 13 * 16,
                     10 * 16, 11 * 16, 14 * 16, 15 * 16
                 };
+                // 遍历每个DC系数
                 for (i = 0; i < 16; i++)
+                    // 将亮度DC系数复制到宏块中
                     dctcoef_set(sl->mb + (p * 256 << pixel_shift),
                                 pixel_shift, dc_mapping[i],
                                 dctcoef_get(sl->mb_luma_dc[p],
