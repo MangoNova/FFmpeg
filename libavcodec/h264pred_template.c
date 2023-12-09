@@ -851,7 +851,7 @@ static void FUNCC(pred8x16_plane)(uint8_t *_src, ptrdiff_t _stride)
 
 #define PREDICT_8x8_LOAD_TOPLEFT \
     const int lt = (SRC(-1,0) + 2*SRC(-1,-1) + SRC(0,-1) + 2) >> 2
-
+// 定义一个宏，用于预测一个8x8的块的所有像素值为同一个值v
 #define PREDICT_8x8_DC(v) \
     int y; \
     for( y = 0; y < 8; y++ ) { \
@@ -860,12 +860,15 @@ static void FUNCC(pred8x16_plane)(uint8_t *_src, ptrdiff_t _stride)
         src += stride; \
     }
 
+// 定义一个函数，用于预测一个8x8的块的所有像素值为128（在8位深度的情况下）
+// 这种预测模式通常在块的所有邻块都不可用时使用
 static void FUNCC(pred8x8l_128_dc)(uint8_t *_src, int has_topleft,
                                    int has_topright, ptrdiff_t _stride)
 {
     pixel *src = (pixel*)_src;
     int stride = _stride>>(sizeof(pixel)-1);
 
+    // 使用定义的宏进行预测
     PREDICT_8x8_DC(PIXEL_SPLAT_X4(1<<(BIT_DEPTH-1)));
 }
 static void FUNCC(pred8x8l_left_dc)(uint8_t *_src, int has_topleft,

@@ -206,15 +206,21 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
         //Intra类型
     	//Intra4x4或者Intra16x16
         if (IS_INTRA(mb_type)) {
+            // 如果启用了去块效应滤波
             if (sl->deblocking_filter)
+                // 交换宏块边界的数据，用于去块效应滤波
                 xchg_mb_border(h, sl, dest_y, dest_cb, dest_cr, linesize,
                                uvlinesize, 1, 0, SIMPLE, PIXEL_SHIFT);
 
+            // 如果不是简单模式，或者没有启用灰度模式
             if (SIMPLE || !CONFIG_GRAY || !(h->flags & AV_CODEC_FLAG_GRAY)) {
+                // 对Cb分量进行色度预测
                 h->hpc.pred8x8[sl->chroma_pred_mode](dest_cb, uvlinesize);
+                // 对Cr分量进行色度预测
                 h->hpc.pred8x8[sl->chroma_pred_mode](dest_cr, uvlinesize);
             }
             //帧内预测-亮度
+            //h264_mb.c 
             hl_decode_mb_predict_luma(h, sl, mb_type, SIMPLE,
                                       transform_bypass, PIXEL_SHIFT,
                                       block_offset, linesize, dest_y, 0);

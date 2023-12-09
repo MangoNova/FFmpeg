@@ -228,25 +228,31 @@ static av_always_inline void mc_dir_part(const H264Context *h, H264SliceContext 
     const int pic_width  = 16 * h->mb_width;
     const int pic_height = 16 * h->mb_height >> MB_FIELD(sl);
     int ysh;
-
+    // If the motion vector's x component is not a multiple of 8, reduce the extra width by 3
     if (mx & 7)
         extra_width -= 3;
+
+    // If the motion vector's y component is not a multiple of 8, reduce the extra height by 3
     if (my & 7)
         extra_height -= 3;
 
+    // Check if the motion vector points outside the padded picture area
     if (full_mx                <          0 - extra_width  ||
         full_my                <          0 - extra_height ||
         full_mx + 16 /*FIXME*/ > pic_width  + extra_width  ||
         full_my + 16 /*FIXME*/ > pic_height + extra_height) {
+
+        // If it does, we need to emulate the edge pixels
         h->vdsp.emulated_edge_mc(sl->edge_emu_buffer,
                                  src_y - (2 << pixel_shift) - 2 * sl->mb_linesize,
                                  sl->mb_linesize, sl->mb_linesize,
                                  16 + 5, 16 + 5 /*FIXME*/, full_mx - 2,
                                  full_my - 2, pic_width, pic_height);
+
+        // Set the source pointer to the emulated edge buffer
         src_y = sl->edge_emu_buffer + (2 << pixel_shift) + 2 * sl->mb_linesize;
         emu   = 1;
     }
-
     qpix_op[luma_xy](dest_y, src_y, sl->mb_linesize); // FIXME try variable height perhaps?
     if (!square)
         qpix_op[luma_xy](dest_y + delta, src_y + delta, sl->mb_linesize);
@@ -632,7 +638,6 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
         if (IS_8x8DCT(mb_type)) {
             // 如果启用了变换绕过
             if (transform_bypass) {
-                // 使用特定的添加函数
                 idct_dc_add =
                 idct_add    = h->h264dsp.h264_add_pixels8_clear;
             } else {
@@ -654,6 +659,7 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
                         h->hpc.pred8x8l_add[dir](ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                     } else
                         // 使用特定的预测和添加函数，包含滤波操作
+                        // 如果左上或者右上可用，传值0x8000或者0x4000，否则传值0
                         h->hpc.pred8x8l_filter_add[dir](ptr, sl->mb + (i * 16 + p * 256 << pixel_shift),
                                                         (sl-> topleft_samples_available << i) & 0x8000,
                                                         (sl->topright_samples_available << i) & 0x4000, linesize);
